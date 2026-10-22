@@ -3,26 +3,34 @@ import crypto from 'crypto';
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Accept');
+  
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
-  const { name, email } = req.body || {};
+  let body = req.body;
+  if (typeof body === 'string') {
+    try { body = JSON.parse(body); } catch (e) { 
+      return res.status(400).json({ error: "Malformed JSON", raw: body }); 
+    }
+  }
+  if (!body || Object.keys(body).length === 0) {
+    return res.status(400).json({ error: "Empty request body" });
+  }
+
+  const { name, email } = body;
   if (!name || !email) return res.status(400).json({ error: 'Name and email required' });
 
-  // These match your verify_config.php
-  const VERIFY_SECRET = process.env.VERIFY_SECRET || '56416838f8b7d9d5df276e221bd0d235ccc5e70a7e6e87f8';
+  const VERIFY_SECRET = '56416838f8b7d9d5df276e221bd0d235ccc5e70a7e6e87f8';
   const SITE_HOST = 'migrationscanada.cfd'; 
   
-  // 1. Generate the Token
-  const expiry = Math.floor(Date.now() / 1000) + 86400; // 24 hours
+  const expiry = Math.floor(Date.now() / 1000) + 86400;
   const payloadObj = { e: email, n: name, x: expiry };
   const payloadB64 = Buffer.from(JSON.stringify(payloadObj)).toString('base64url');
   const sig = crypto.createHmac('sha256', VERIFY_SECRET).update(payloadB64).digest('hex');
   
   const link = `https://${SITE_HOST}/verify.php?t=${payloadB64}.${sig}`;
 
-  // 2. Prepare Email HTML
   const html = `
 <div style='font-family: Arial, sans-serif; background-color: #f4f7f6; padding: 40px 10px;'>
   <div style='max-width: 600px; margin: 0 auto; background: #ffffff; border-radius: 10px; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.05);'>
@@ -44,7 +52,6 @@ export default async function handler(req, res) {
   </div>
 </div>`;
 
-  // 3. Send via Resend
   const RESEND_API_KEY = process.env.RESEND_API_KEY || 're_YOUR_ACTUAL_KEY_HERE';
   const RESEND_SENDER_EMAIL = 'guide@migrationscanada.cfd';
 
